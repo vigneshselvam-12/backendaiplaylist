@@ -164,9 +164,11 @@ app.get('/searchTracks', ensureUserAccessToken, async (req, res) => {
 });
 
 // Start the server after connecting to MongoDB
-app.listen(port, async () => {
+app.listen(port, '0.0.0.0', async () => {
     await connectDB();
-    console.log(`Server running on http://localhost:${port}`);
+    console.log(`Server running on http://0.0.0.0:${port}`);
 });
+
+
 
 
