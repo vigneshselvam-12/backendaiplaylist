@@ -30,7 +30,7 @@ async function connectDB() {
 const spotifyApi = new SpotifyWebApi({
     clientId: '640ddf3eca3a4f7482844f1799a16a17',  // Replace with your Client ID
     clientSecret: 'f55bbeafc6bb4b4297ac636453515a62',  // Replace with your Client Secret
-    redirectUri: 'http://localhost:3001/callback',  // Replace with your redirect URI
+    redirectUri: 'http://3.19.215.181:3001/callback',  // Replace with your redirect URI
 });
 
 // Spotify login route (for user-specific login)
@@ -168,6 +168,8 @@ app.listen(port, '0.0.0.0', async () => {
     await connectDB();
     console.log(`Server running on http://0.0.0.0:${port}`);
 });
+
+
 
 
 
