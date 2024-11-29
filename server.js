@@ -31,18 +31,20 @@ async function connectDB() {
 const spotifyApi = new SpotifyWebApi({
     clientId: '640ddf3eca3a4f7482844f1799a16a17',
     clientSecret: 'f55bbeafc6bb4b4297ac636453515a62',
-    redirectUri: 'http://3.19.215.181:3001/callback', // Update this URI if needed
+    redirectUri: 'http://3.19.215.181:3001/callback',
 });
 
 // Spotify login route
 app.get('/login', (req, res) => {
     const { userId } = req.query;
     if (!userId) {
-        return res.status(400).send('Missing userId query parameter');
+        return res.status(400).send("Missing userId query parameter");
     }
 
+    console.log(`Login initiated for userId: ${userId}`);
     const scopes = ['user-read-private', 'user-read-email', 'playlist-modify-public', 'playlist-modify-private'];
     const authorizeURL = spotifyApi.createAuthorizeURL(scopes) + `&state=${userId}`;
+    console.log(`Redirecting to Spotify: ${authorizeURL}`); // Improvement added here
     res.redirect(authorizeURL);
 });
 
@@ -158,8 +160,6 @@ app.listen(port, '0.0.0.0', async () => {
     await connectDB();
     console.log(`Server running on http://3.19.215.181:${port}`);
 });
-
-
 
 
 
