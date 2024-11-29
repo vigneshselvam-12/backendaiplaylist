@@ -19,41 +19,41 @@ async function connectDB() {
         await client.connect();
         db = client.db('sample_mflix'); // Use your database name here
         playlistCollection = db.collection('playlist');
-        usersCollection = db.collection('users');  // Add a collection to store user tokens
+        usersCollection = db.collection('users');
         console.log('Connected to MongoDB Atlas');
     } catch (error) {
-        console.error('Error connecting to MongoDB Atlas:', error);
+        console.error('Error connecting to MongoDB Atlas:', error.message);
+        process.exit(1); // Exit if database connection fails
     }
 }
 
-// Initialize Spotify API client (this client will be reused per request with user-specific tokens)
+// Initialize Spotify API client
 const spotifyApi = new SpotifyWebApi({
-    clientId: '640ddf3eca3a4f7482844f1799a16a17',  // Replace with your Client ID
-    clientSecret: 'f55bbeafc6bb4b4297ac636453515a62',  // Replace with your Client Secret
-    redirectUri: 'http://3.19.215.181:3001/callback',  // Replace with your redirect URI
+    clientId: '640ddf3eca3a4f7482844f1799a16a17',
+    clientSecret: 'f55bbeafc6bb4b4297ac636453515a62',
+    redirectUri: 'http://3.19.215.181:3001/callback', // Update this URI if needed
 });
 
-// Spotify login route (for user-specific login)
+// Spotify login route
 app.get('/login', (req, res) => {
-    const { userId } = req.query;  // Accept a user identifier in query parameters
+    const { userId } = req.query;
     if (!userId) {
-        return res.status(400).send("Missing userId query parameter");
+        return res.status(400).send('Missing userId query parameter');
     }
 
-    console.log(`Login initiated for userId: ${userId}`);
     const scopes = ['user-read-private', 'user-read-email', 'playlist-modify-public', 'playlist-modify-private'];
-    const authorizeURL = spotifyApi.createAuthorizeURL(scopes) + `&state=${userId}`;  // Add user ID to state for tracking
+    const authorizeURL = spotifyApi.createAuthorizeURL(scopes) + `&state=${userId}`;
     res.redirect(authorizeURL);
 });
 
-// Spotify callback route to store user-specific tokens
+// Spotify callback route
 app.get('/callback', async (req, res) => {
     const code = req.query.code || null;
-    const userId = req.query.state;  // Retrieve userId from the state parameter
+    const userId = req.query.state;
 
     if (!userId) {
-        console.error("Callback received without userId");
-        return res.status(400).send("Missing userId in callback state");
+        console.error('Callback received without userId');
+        return res.status(400).send('Missing userId in callback state');
     }
 
     try {
@@ -61,48 +61,41 @@ app.get('/callback', async (req, res) => {
         const accessToken = data.body['access_token'];
         const refreshToken = data.body['refresh_token'];
 
-        // Store user-specific tokens in MongoDB
         await usersCollection.updateOne(
-            { userId },  // Use userId as a unique identifier
+            { userId },
             { $set: { accessToken, refreshToken, tokenExpiry: Date.now() + 3600 * 1000 } },
-            { upsert: true }  // Insert if not already present
+            { upsert: true }
         );
 
         console.log(`Tokens for user ${userId} stored in MongoDB`);
-
         res.send('Authentication successful! You can now close this page.');
     } catch (error) {
-        console.error('Error during Spotify authentication:', error);
-        res.send('Authentication failed');
+        console.error('Error during Spotify authentication:', error.message);
+        res.status(500).send('Authentication failed');
     }
 });
 
 // Middleware to ensure user-specific access token is valid
 async function ensureUserAccessToken(req, res, next) {
-    const { userId } = req.query;  // Get userId from request query parameters
+    const { userId } = req.query;
 
     if (!userId) {
-        console.error("Request missing userId");
         return res.status(400).json({ error: 'Missing userId in request' });
     }
 
     try {
-        // Retrieve user’s tokens from MongoDB
         const user = await usersCollection.findOne({ userId });
         if (!user) {
             return res.status(401).json({ error: 'User not authenticated' });
         }
 
-        // Set the user’s refresh token in Spotify API client
         spotifyApi.setRefreshToken(user.refreshToken);
 
-        // Check if the access token needs to be refreshed
         if (!spotifyApi.getAccessToken() || Date.now() > user.tokenExpiry) {
             const data = await spotifyApi.refreshAccessToken();
             const newAccessToken = data.body['access_token'];
             spotifyApi.setAccessToken(newAccessToken);
 
-            // Update MongoDB with new access token and expiry time
             await usersCollection.updateOne(
                 { userId },
                 { $set: { accessToken: newAccessToken, tokenExpiry: Date.now() + 3600 * 1000 } }
@@ -110,42 +103,40 @@ async function ensureUserAccessToken(req, res, next) {
 
             console.log(`Access token for user ${userId} refreshed`);
         } else {
-            spotifyApi.setAccessToken(user.accessToken);  // Set existing access token
+            spotifyApi.setAccessToken(user.accessToken);
         }
 
         next();
     } catch (error) {
-        console.error('Error ensuring access token:', error);
+        console.error('Error ensuring access token:', error.message);
         res.status(500).send('Error ensuring access token');
     }
 }
 
-// Route to generate playlist with user-specific token
+// Generate playlist route
 app.post('/generatePlaylist', ensureUserAccessToken, async (req, res) => {
     const { userId } = req.query;
-    const userInput = req.body.keywords;
-    const cleanInput = userInput.trim().toLowerCase();
+    const { keywords } = req.body;
+
+    if (!keywords) {
+        return res.status(400).json({ error: 'Missing keywords in request body' });
+    }
 
     try {
-        // Search tracks using Spotify API with user-specific token
-        const data = await spotifyApi.searchTracks(cleanInput, { limit: 10 });
+        const data = await spotifyApi.searchTracks(keywords.trim().toLowerCase(), { limit: 10 });
         const tracks = data.body.tracks.items;
 
-        // Store the track data in MongoDB Atlas for the user
         await playlistCollection.insertMany(tracks);
         console.log(`Tracks saved to MongoDB Atlas for user ${userId}`);
 
-        res.json({
-            message: 'Playlist generated successfully!',
-            tracks: tracks,
-        });
+        res.json({ message: 'Playlist generated successfully!', tracks });
     } catch (error) {
-        console.error('Error generating playlist:', error);
+        console.error('Error generating playlist:', error.message);
         res.status(500).send('Error generating playlist');
     }
 });
 
-// Route to search tracks with user-specific token
+// Search tracks route
 app.get('/searchTracks', ensureUserAccessToken, async (req, res) => {
     const { userId, keyword } = req.query;
 
@@ -154,11 +145,10 @@ app.get('/searchTracks', ensureUserAccessToken, async (req, res) => {
     }
 
     try {
-        // Search tracks using Spotify API with user-specific token
         const data = await spotifyApi.searchTracks(keyword, { limit: 10 });
         res.json(data.body.tracks.items);
     } catch (error) {
-        console.error('Error searching tracks:', error);
+        console.error('Error searching tracks:', error.message);
         res.status(500).send('Error searching tracks');
     }
 });
@@ -166,7 +156,7 @@ app.get('/searchTracks', ensureUserAccessToken, async (req, res) => {
 // Start the server after connecting to MongoDB
 app.listen(port, '0.0.0.0', async () => {
     await connectDB();
-    console.log(`Server running on http://0.0.0.0:${port}`);
+    console.log(`Server running on http://3.19.215.181:${port}`);
 });
 
 
